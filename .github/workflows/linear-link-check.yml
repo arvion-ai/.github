@@ -35,12 +35,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # Check out the action and run it as a local action. A remote
+      # `uses: ...@main` would be downloaded when the job starts, even for a
+      # skipped step. In arvion-ai/.github itself this checks out the PR, so
+      # changes to the action are tested before they reach main; in every other
+      # repo it checks out main.
+      - name: Check out the action
+        uses: actions/checkout@v7
+        with:
+          repository: arvion-ai/.github
+          ref: ${{ github.repository == 'arvion-ai/.github' && github.sha || 'main' }}
+          path: .linear-link-check
+          sparse-checkout: actions/linear-link-check
+          persist-credentials: false
+
       # The inputs context is only populated under workflow_call, where enforce
       # is always true or false. Under a direct pull_request trigger it is null,
       # so fall back to the action's own defaults rather than passing empty strings.
       - name: Check Linear link
         if: toJSON(inputs.enforce) != 'null'
-        uses: arvion-ai/.github/actions/linear-link-check@main
+        uses: ./.linear-link-check/actions/linear-link-check
         with:
           team-keys: ${{ inputs.team-keys }}
           target-branches: ${{ inputs.target-branches }}
@@ -48,4 +62,4 @@ jobs:
           enforce: ${{ inputs.enforce }}
       - name: Check Linear link (defaults)
         if: toJSON(inputs.enforce) == 'null'
-        uses: arvion-ai/.github/actions/linear-link-check@main
+        uses: ./.linear-link-check/actions/linear-link-check
