@@ -1,0 +1,25 @@
+name: Linear link check
+description: Fails a pull request that is not linked to a Linear issue in a way Linear recognizes.
+author: arvion-ai
+inputs:
+  team-keys:
+    description: >-
+      Comma-separated Linear team keys that count as issue keys, e.g. "ARV,OPS".
+      Leave empty to accept any key matching [A-Z][A-Z0-9]+-<number>.
+    required: false
+    default: ARV
+  target-branches:
+    description: Comma-separated base branches to enforce on. PRs into other branches pass with a notice. Empty enforces on all branches.
+    required: false
+    default: main
+  skip-label:
+    description: PR label that exempts the PR from the check. Empty disables the exemption.
+    required: false
+    default: no-ticket
+  enforce:
+    description: When false, an unlinked PR produces a warning instead of a failure.
+    required: false
+    default: 'true'
+runs:
+  using: node24
+  main: dist/index.js

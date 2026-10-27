@@ -1,0 +1,51 @@
+# Reusable workflow: fails PRs that are not linked to a Linear issue.
+# Repos call it via the "Linear link check" starter workflow. The pull_request
+# trigger lets it also run directly as an org ruleset "required workflow".
+name: Linear link check
+
+on:
+  workflow_call:
+    inputs:
+      team-keys:
+        description: Comma-separated Linear team keys. Empty accepts any issue key.
+        type: string
+        default: ARV
+      target-branches:
+        description: Comma-separated base branches to enforce on.
+        type: string
+        default: main
+      skip-label:
+        description: PR label that exempts the PR.
+        type: string
+        default: no-ticket
+      enforce:
+        description: When false, report a warning instead of failing.
+        type: boolean
+        default: true
+  pull_request:
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  linear-link:
+    name: linear-link
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # The inputs context is only populated under workflow_call, where enforce
+      # is always true or false. Under a direct pull_request trigger it is null,
+      # so fall back to the action's own defaults rather than passing empty strings.
+      - name: Check Linear link
+        if: toJSON(inputs.enforce) != 'null'
+        uses: arvion-ai/.github/actions/linear-link-check@main
+        with:
+          team-keys: ${{ inputs.team-keys }}
+          target-branches: ${{ inputs.target-branches }}
+          skip-label: ${{ inputs.skip-label }}
+          enforce: ${{ inputs.enforce }}
+      - name: Check Linear link (defaults)
+        if: toJSON(inputs.enforce) == 'null'
+        uses: arvion-ai/.github/actions/linear-link-check@main

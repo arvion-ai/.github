@@ -1,0 +1,21 @@
+# Fails pull requests that are not linked to a Linear issue.
+# Link a PR with the issue key in the branch name or title, or with
+# "Fixes ARV-123" in the description. The "no-ticket" label skips the check.
+name: Linear link check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  linear-link:
+    uses: arvion-ai/.github/.github/workflows/linear-link-check.yml@main
+    # with:
+    #   team-keys: ARV
+    #   target-branches: main
+    #   skip-label: no-ticket
+    #   enforce: true

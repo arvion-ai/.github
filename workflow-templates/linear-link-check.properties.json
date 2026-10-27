@@ -1,0 +1,6 @@
+{
+  "name": "Linear link check",
+  "description": "Fails pull requests into production branches that are not linked to a Linear issue.",
+  "iconName": "octicon link",
+  "categories": ["Automation"]
+}
