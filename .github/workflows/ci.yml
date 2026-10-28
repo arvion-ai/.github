@@ -6,10 +6,14 @@ on:
     paths:
       - actions/linear-link-check/**
       - .github/workflows/ci.yml
+      - README.md
+      - .github/PULL_REQUEST_TEMPLATE.md
   pull_request:
     paths:
       - actions/linear-link-check/**
       - .github/workflows/ci.yml
+      - README.md
+      - .github/PULL_REQUEST_TEMPLATE.md
 
 permissions:
   contents: read

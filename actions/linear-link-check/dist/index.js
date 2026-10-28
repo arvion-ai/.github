@@ -24550,7 +24550,8 @@ var CLOSING_WORDS = [
   "implement",
   "implements",
   "implemented",
-  "implementing"
+  "implementing",
+  "linear issue"
 ];
 var NON_CLOSING_WORDS = [
   "ref",
@@ -24564,6 +24565,7 @@ var NON_CLOSING_WORDS = [
   "towards"
 ];
 var MAGIC_WORDS = [...CLOSING_WORDS, ...NON_CLOSING_WORDS];
+var IGNORE_WORDS = ["skip", "ignore"];
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -24599,25 +24601,33 @@ function stripComments(body) {
 }
 var LIST_ITEM = /^[*_]*(?:https?:\/\/linear\.app\/[\w-]+\/issue\/)?([A-Za-z][A-Za-z0-9]*-\d+)(?![A-Za-z0-9])[*_]*/;
 var LIST_SEPARATOR = /^\s*(?:,|&|\band\b)\s*/i;
-function findKeyInBody(body, teamKeys) {
+function* keysAfterWords(body, words, teamKeys) {
   const text = stripComments(body);
-  const words = MAGIC_WORDS.map((word) => word.replace(" ", "\\s+")).join("|");
-  const magicWord = new RegExp(String.raw`\b(?:${words})\b[\s:]*`, "gi");
+  const pattern = words.map((word) => word.replace(" ", "\\s+")).join("|");
+  const wordRegExp = new RegExp(String.raw`\b(?:${pattern})\b[\s:]*`, "gi");
   const allowed = keyRegExp(teamKeys, false);
-  for (const match of text.matchAll(magicWord)) {
+  for (const match of text.matchAll(wordRegExp)) {
     let rest = text.slice(match.index + match[0].length);
     for (; ; ) {
       const item = LIST_ITEM.exec(rest);
       if (!item) break;
       const candidate = item[1] ?? "";
-      if (allowed.exec(candidate)?.[0] === candidate) return candidate.toUpperCase();
+      if (allowed.exec(candidate)?.[0] === candidate) yield candidate.toUpperCase();
       rest = rest.slice(item[0].length);
       const separator = LIST_SEPARATOR.exec(rest);
       if (!separator) break;
       rest = rest.slice(separator[0].length);
     }
   }
+}
+function findKeyInBody(body, teamKeys, ignored = /* @__PURE__ */ new Set()) {
+  for (const key of keysAfterWords(body, MAGIC_WORDS, teamKeys)) {
+    if (!ignored.has(key)) return key;
+  }
   return void 0;
+}
+function findIgnoredKeys(body, teamKeys) {
+  return new Set(keysAfterWords(body, IGNORE_WORDS, teamKeys));
 }
 function isBot(author) {
   return author.toLowerCase().endsWith("[bot]");
@@ -24633,11 +24643,12 @@ function checkPullRequest(pr, config) {
   if (config.targetBranches.length > 0 && !config.targetBranches.includes(pr.baseBranch)) {
     return { status: "exempt", reason: `base branch ${pr.baseBranch} is not a target branch` };
   }
+  const ignored = findIgnoredKeys(pr.body, config.teamKeys);
   const branchKey = findKeyInBranch(pr.branch, config.teamKeys);
-  if (branchKey) return { status: "linked", source: "branch", key: branchKey };
+  if (branchKey && !ignored.has(branchKey)) return { status: "linked", source: "branch", key: branchKey };
   const titleKey = findKeyInTitle(pr.title, config.teamKeys);
-  if (titleKey) return { status: "linked", source: "title", key: titleKey };
-  const bodyKey = findKeyInBody(pr.body, config.teamKeys);
+  if (titleKey && !ignored.has(titleKey)) return { status: "linked", source: "title", key: titleKey };
+  const bodyKey = findKeyInBody(pr.body, config.teamKeys, ignored);
   if (bodyKey) return { status: "linked", source: "body", key: bodyKey };
   return { status: "unlinked" };
 }

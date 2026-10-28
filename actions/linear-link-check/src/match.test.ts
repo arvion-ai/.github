@@ -116,6 +116,31 @@ describe('PR body', () => {
   });
 });
 
+describe('skip and ignore', () => {
+  it.each([
+    ['branch key', { branch: 'me/arv-123-x', body: 'Ignore ARV-123' }],
+    ['title key', { title: 'ARV-123: Add billing export', body: 'skip arv-123' }],
+    ['body key', { body: 'Part of ARV-123\n\nIgnore: ARV-123' }],
+    ['key in an ignored list', { branch: 'me/arv-2-x', body: 'Skip ARV-1, ARV-2' }],
+  ])('unlinks an ignored %s', (_name, overrides) => {
+    expect(checkPullRequest(pr(overrides), config)).toEqual(unlinked);
+  });
+
+  it('still links another key', () => {
+    expect(checkPullRequest(pr({ branch: 'me/arv-1-x', body: 'Ignore ARV-1\nPart of ARV-2' }), config)).toEqual({
+      status: 'linked',
+      source: 'body',
+      key: 'ARV-2',
+    });
+  });
+
+  it('does not count an ignore word inside an HTML comment', () => {
+    expect(checkPullRequest(pr({ branch: 'me/arv-1-x', body: '<!-- ignore ARV-1 -->' }), config)).toMatchObject({
+      status: 'linked',
+    });
+  });
+});
+
 describe('PR template', () => {
   it('an untouched template does not link', () => {
     const body = readFileSync(join(repoRoot, '.github', 'PULL_REQUEST_TEMPLATE.md'), 'utf8');

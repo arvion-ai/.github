@@ -53,6 +53,7 @@ export const CLOSING_WORDS = [
   'resolve', 'resolves', 'resolved', 'resolving',
   'complete', 'completes', 'completed', 'completing',
   'implement', 'implements', 'implemented', 'implementing',
+  'linear issue',
 ];
 export const NON_CLOSING_WORDS = [
   'ref', 'refs', 'references',
@@ -60,6 +61,9 @@ export const NON_CLOSING_WORDS = [
   'toward', 'towards',
 ];
 export const MAGIC_WORDS = [...CLOSING_WORDS, ...NON_CLOSING_WORDS];
+// Words that make Linear fully unlink the PR from the issues that follow them,
+// even if the branch name or title contains the key.
+export const IGNORE_WORDS = ['skip', 'ignore'];
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -118,30 +122,43 @@ function stripComments(body: string): string {
 const LIST_ITEM = /^[*_]*(?:https?:\/\/linear\.app\/[\w-]+\/issue\/)?([A-Za-z][A-Za-z0-9]*-\d+)(?![A-Za-z0-9])[*_]*/;
 const LIST_SEPARATOR = /^\s*(?:,|&|\band\b)\s*/i;
 
-/**
- * Finds the first allowed issue key in a list that directly follows a magic
- * word in the body, e.g. "Fixes ENG-1, ARV-2" gives ARV-2.
- * A bare key without a magic word does not count, since Linear ignores it.
- */
-export function findKeyInBody(body: string, teamKeys: string[]): string | undefined {
+/** Yields the allowed issue keys in each list that directly follows one of the words. */
+function* keysAfterWords(body: string, words: string[], teamKeys: string[]): Generator<string> {
   const text = stripComments(body);
-  const words = MAGIC_WORDS.map((word) => word.replace(' ', '\\s+')).join('|');
-  const magicWord = new RegExp(String.raw`\b(?:${words})\b[\s:]*`, 'gi');
+  const pattern = words.map((word) => word.replace(' ', '\\s+')).join('|');
+  const wordRegExp = new RegExp(String.raw`\b(?:${pattern})\b[\s:]*`, 'gi');
   const allowed = keyRegExp(teamKeys, false);
-  for (const match of text.matchAll(magicWord)) {
+  for (const match of text.matchAll(wordRegExp)) {
     let rest = text.slice(match.index + match[0].length);
     for (;;) {
       const item = LIST_ITEM.exec(rest);
       if (!item) break;
       const candidate = item[1] ?? '';
-      if (allowed.exec(candidate)?.[0] === candidate) return candidate.toUpperCase();
+      if (allowed.exec(candidate)?.[0] === candidate) yield candidate.toUpperCase();
       rest = rest.slice(item[0].length);
       const separator = LIST_SEPARATOR.exec(rest);
       if (!separator) break;
       rest = rest.slice(separator[0].length);
     }
   }
+}
+
+/**
+ * Finds the first allowed issue key in a list that directly follows a magic
+ * word in the body, e.g. "Fixes ENG-1, ARV-2" gives ARV-2. Keys in `ignored`
+ * are passed over. A bare key without a magic word does not count, since
+ * Linear ignores it.
+ */
+export function findKeyInBody(body: string, teamKeys: string[], ignored = new Set<string>()): string | undefined {
+  for (const key of keysAfterWords(body, MAGIC_WORDS, teamKeys)) {
+    if (!ignored.has(key)) return key;
+  }
   return undefined;
+}
+
+/** Keys the body opts out of with "skip ARV-123" or "ignore ARV-123". */
+export function findIgnoredKeys(body: string, teamKeys: string[]): Set<string> {
+  return new Set(keysAfterWords(body, IGNORE_WORDS, teamKeys));
 }
 
 function isBot(author: string): boolean {
@@ -160,11 +177,12 @@ export function checkPullRequest(pr: PullRequestInfo, config: CheckConfig): Chec
     return { status: 'exempt', reason: `base branch ${pr.baseBranch} is not a target branch` };
   }
 
+  const ignored = findIgnoredKeys(pr.body, config.teamKeys);
   const branchKey = findKeyInBranch(pr.branch, config.teamKeys);
-  if (branchKey) return { status: 'linked', source: 'branch', key: branchKey };
+  if (branchKey && !ignored.has(branchKey)) return { status: 'linked', source: 'branch', key: branchKey };
   const titleKey = findKeyInTitle(pr.title, config.teamKeys);
-  if (titleKey) return { status: 'linked', source: 'title', key: titleKey };
-  const bodyKey = findKeyInBody(pr.body, config.teamKeys);
+  if (titleKey && !ignored.has(titleKey)) return { status: 'linked', source: 'title', key: titleKey };
+  const bodyKey = findKeyInBody(pr.body, config.teamKeys, ignored);
   if (bodyKey) return { status: 'linked', source: 'body', key: bodyKey };
   return { status: 'unlinked' };
 }

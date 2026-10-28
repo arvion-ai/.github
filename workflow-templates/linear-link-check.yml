@@ -6,6 +6,9 @@ name: Linear link check
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened, labeled, unlabeled]
+  # A required check must also report in the merge queue. The action passes
+  # there with a notice, since the PR itself was already checked.
+  merge_group:
 
 permissions:
   contents: read

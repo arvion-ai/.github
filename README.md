@@ -12,12 +12,14 @@ A PR passes if any one of these is true. The rules mirror how Linear links PRs.
 
 1. **The PR description contains a magic word followed by an issue key**, e.g. `Part of ARV-123`. This is the recommended form, and the PR template starts with it.
    - Use a non-closing word such as `Part of` when the PR is one part of the work. A closing word such as `Fixes` closes the issue when the PR merges.
-   - Closing words: close, closes, closed, closing, fix, fixes, fixed, fixing, resolve, resolves, resolved, resolving, complete, completes, completed, completing, implement, implements, implemented, implementing.
+   - Closing words: close, closes, closed, closing, fix, fixes, fixed, fixing, resolve, resolves, resolved, resolving, complete, completes, completed, completing, implement, implements, implemented, implementing, linear issue.
    - Non-closing words: ref, refs, references, part of, related to, relates to, contributes to, toward, towards.
    - Magic words and keys match in any case. The key may be bold or italic, given as a Linear issue URL, or be one of a list: `Fixes ENG-1, ARV-2` and `Fixes DES-5 and ARV-2` both link `ARV-2`.
    - A bare key without a magic word does **not** count, because Linear ignores it. Neither does a key in backticks or a Markdown link, or anything inside an HTML comment.
 2. **The branch name contains an issue key**, in any case. Linear's generated branch names, such as `michal/arv-123-some-title`, already do. In Linear, press <kbd>Cmd/Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>.</kbd> on an issue to copy its branch name.
 3. **The PR title contains an issue key**, in any case, e.g. `ARV-123: Add billing export`.
+
+`skip ARV-123` or `ignore ARV-123` in the description makes Linear fully unlink the PR from that issue, even if the key is in the branch name or title. The check follows suit and does not count that key anywhere.
 
 The Atlassian app is installed on our repos and Jira issue numbers overlap Linear's, so a key in a branch name or title can also link an unrelated Jira ticket. Prefer the description.
 
@@ -51,6 +53,8 @@ The pieces:
 
 1. In the repo, go to **Actions → New workflow** and pick **Linear link check** under "By arvion-ai".
 2. Commit the file it creates at `.github/workflows/linear-link-check.yml`. To change a setting, uncomment the `with:` block, for example to set `enforce: false`.
+
+The starter workflow also runs on `merge_group`, so the required check reports in repos that use a merge queue. Merge-queue runs pass with a notice, since the PR was already checked.
 
 A repo that opts in this way should report the check as **`linear-link / linear-link`**: GitHub prefixes the reusable workflow's job name with the calling job's name. Confirm the name on a real PR before making it required.
 
