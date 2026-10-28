@@ -19,6 +19,13 @@ export interface CheckConfig {
   skipLabel: string;
 }
 
+/** Raw action inputs, as strings. An empty string means "use the default". */
+export interface RawInputs {
+  teamKeys: string;
+  targetBranches: string;
+  skipLabel: string;
+}
+
 export type LinkSource = 'branch' | 'title' | 'body';
 
 export type CheckResult =
@@ -26,18 +33,31 @@ export type CheckResult =
   | { status: 'linked'; source: LinkSource; key: string }
   | { status: 'unlinked' };
 
+// The only place the defaults are defined. action.yml and the reusable
+// workflow leave the inputs empty so these apply.
+export const DEFAULT_TEAM_KEYS = ['ARV', 'OSS', 'KIN'];
+export const DEFAULT_TARGET_BRANCHES = ['main', 'production'];
+/** Input value that disables a list filter: any team key, or every base branch. */
+export const ANY = '*';
+
 const GENERIC_TEAM = '[A-Z][A-Z0-9]+';
+// A key must not touch a letter or digit on either side, so XARV-123 and
+// ARV-123x do not count. Underscores and other punctuation are separators.
+const BEFORE_KEY = '(?<![A-Za-z0-9])';
+const AFTER_KEY = '(?![A-Za-z0-9])';
 
 // Linear's magic words. Closing words close the issue on merge; the others only link it.
-const CLOSING_WORDS = [
+export const CLOSING_WORDS = [
   'close', 'closes', 'closed', 'closing',
   'fix', 'fixes', 'fixed', 'fixing',
   'resolve', 'resolves', 'resolved', 'resolving',
   'complete', 'completes', 'completed', 'completing',
+  'implement', 'implements', 'implemented', 'implementing',
 ];
-const NON_CLOSING_WORDS = [
+export const NON_CLOSING_WORDS = [
   'ref', 'refs', 'references',
-  'part of', 'related to', 'contributes to',
+  'part of', 'related to', 'relates to', 'contributes to',
+  'toward', 'towards',
 ];
 export const MAGIC_WORDS = [...CLOSING_WORDS, ...NON_CLOSING_WORDS];
 
@@ -53,39 +73,73 @@ export function parseList(value: string): string[] {
     .filter((item) => item.length > 0);
 }
 
-function teamPattern(teamKeys: string[]): string {
-  if (teamKeys.length === 0) return GENERIC_TEAM;
-  return `(?:${teamKeys.map((key) => escapeRegExp(key.toUpperCase())).join('|')})`;
+/** Applies the defaults: empty means the default list, "*" means no filter. */
+function resolveList(value: string, defaults: string[]): string[] {
+  const list = parseList(value);
+  if (list.length === 0) return defaults;
+  if (list.includes(ANY)) return [];
+  return list;
 }
 
-/** Regex source for an issue key, bounded so that e.g. XARV-123 does not match ARV. */
-function keyPattern(teamKeys: string[]): string {
-  return `\\b${teamPattern(teamKeys)}-\\d+\\b`;
-}
-
-export function findKeyInBranch(branch: string, teamKeys: string[]): string | undefined {
-  const match = new RegExp(keyPattern(teamKeys), 'i').exec(branch);
-  return match?.[0].toUpperCase();
-}
-
-export function findKeyInTitle(title: string, teamKeys: string[]): string | undefined {
-  return new RegExp(keyPattern(teamKeys)).exec(title)?.[0];
+export function resolveConfig(inputs: RawInputs): CheckConfig {
+  return {
+    teamKeys: resolveList(inputs.teamKeys, DEFAULT_TEAM_KEYS).map((key) => key.toUpperCase()),
+    targetBranches: resolveList(inputs.targetBranches, DEFAULT_TARGET_BRANCHES),
+    skipLabel: inputs.skipLabel.trim(),
+  };
 }
 
 /**
- * Finds the first issue key that directly follows a magic word in the body.
+ * Regex for an issue key. With team keys, the key matches in any case, as in
+ * Linear. Without them, only uppercase keys count outside the branch name, so
+ * that ordinary words like "utf-8" are not taken for keys.
+ */
+function keyRegExp(teamKeys: string[], anyCase: boolean, flags = ''): RegExp {
+  const team =
+    teamKeys.length === 0 ? GENERIC_TEAM : `(?:${teamKeys.map((key) => escapeRegExp(key)).join('|')})`;
+  const caseFlag = teamKeys.length > 0 || anyCase ? 'i' : '';
+  return new RegExp(`${BEFORE_KEY}${team}-\\d+${AFTER_KEY}`, caseFlag + flags);
+}
+
+export function findKeyInBranch(branch: string, teamKeys: string[]): string | undefined {
+  return keyRegExp(teamKeys, true).exec(branch)?.[0].toUpperCase();
+}
+
+export function findKeyInTitle(title: string, teamKeys: string[]): string | undefined {
+  return keyRegExp(teamKeys, false).exec(title)?.[0].toUpperCase();
+}
+
+/** Removes HTML comments, which GitHub does not render and Linear ignores. */
+function stripComments(body: string): string {
+  return body.replace(/<!--[\s\S]*?(?:-->|$)/g, ' ');
+}
+
+// One key in a magic-word list: optionally bold or italic, optionally a Linear issue URL.
+const LIST_ITEM = /^[*_]*(?:https?:\/\/linear\.app\/[\w-]+\/issue\/)?([A-Za-z][A-Za-z0-9]*-\d+)(?![A-Za-z0-9])[*_]*/;
+const LIST_SEPARATOR = /^\s*(?:,|&|\band\b)\s*/i;
+
+/**
+ * Finds the first allowed issue key in a list that directly follows a magic
+ * word in the body, e.g. "Fixes ENG-1, ARV-2" gives ARV-2.
  * A bare key without a magic word does not count, since Linear ignores it.
- * The key may also be given as a Linear issue URL.
  */
 export function findKeyInBody(body: string, teamKeys: string[]): string | undefined {
+  const text = stripComments(body);
   const words = MAGIC_WORDS.map((word) => word.replace(' ', '\\s+')).join('|');
-  const urlPrefix = String.raw`(?:https?://linear\.app/[\w-]+/issue/)?`;
-  // Magic words are case-insensitive; the key itself is checked case-sensitively below.
-  const candidate = new RegExp(String.raw`\b(?:${words})\b[\s:]*${urlPrefix}(\S+)`, 'gi');
-  const key = new RegExp(`^${keyPattern(teamKeys)}`);
-  for (const match of body.matchAll(candidate)) {
-    const found = key.exec(match[1] ?? '');
-    if (found) return found[0];
+  const magicWord = new RegExp(String.raw`\b(?:${words})\b[\s:]*`, 'gi');
+  const allowed = keyRegExp(teamKeys, false);
+  for (const match of text.matchAll(magicWord)) {
+    let rest = text.slice(match.index + match[0].length);
+    for (;;) {
+      const item = LIST_ITEM.exec(rest);
+      if (!item) break;
+      const candidate = item[1] ?? '';
+      if (allowed.exec(candidate)?.[0] === candidate) return candidate.toUpperCase();
+      rest = rest.slice(item[0].length);
+      const separator = LIST_SEPARATOR.exec(rest);
+      if (!separator) break;
+      rest = rest.slice(separator[0].length);
+    }
   }
   return undefined;
 }
@@ -114,3 +168,4 @@ export function checkPullRequest(pr: PullRequestInfo, config: CheckConfig): Chec
   if (bodyKey) return { status: 'linked', source: 'body', key: bodyKey };
   return { status: 'unlinked' };
 }
+

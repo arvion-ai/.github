@@ -1,6 +1,13 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
-import { checkPullRequest, parseList, type CheckConfig, type PullRequestInfo } from './match.js';
+import {
+  checkPullRequest,
+  CLOSING_WORDS,
+  NON_CLOSING_WORDS,
+  resolveConfig,
+  type CheckConfig,
+  type PullRequestInfo,
+} from './match.js';
 
 interface PullRequestPayload {
   title?: string;
@@ -11,27 +18,38 @@ interface PullRequestPayload {
   labels?: { name?: string }[];
 }
 
+function required<T>(value: T | undefined, field: string): T {
+  if (value === undefined) throw new Error(`The pull_request payload has no ${field}.`);
+  return value;
+}
+
 function readPullRequest(payload: PullRequestPayload): PullRequestInfo {
   return {
-    branch: payload.head?.ref ?? '',
-    baseBranch: payload.base?.ref ?? '',
-    title: payload.title ?? '',
+    branch: required(payload.head?.ref, 'head.ref'),
+    baseBranch: required(payload.base?.ref, 'base.ref'),
+    title: required(payload.title, 'title'),
+    // GitHub sends a null body for an empty description.
     body: payload.body ?? '',
-    author: payload.user?.login ?? '',
-    labels: (payload.labels ?? []).map((label) => label.name ?? ''),
+    author: required(payload.user?.login, 'user.login'),
+    labels: (payload.labels ?? []).map((label) => required(label.name, 'labels[].name')),
   };
 }
 
 function readConfig(): CheckConfig {
-  return {
-    teamKeys: parseList(core.getInput('team-keys')).map((key) => key.toUpperCase()),
-    targetBranches: parseList(core.getInput('target-branches')),
+  return resolveConfig({
+    teamKeys: core.getInput('team-keys'),
+    targetBranches: core.getInput('target-branches'),
     skipLabel: core.getInput('skip-label'),
-  };
+  });
+}
+
+/** Empty means the default, true. */
+function readEnforce(): boolean {
+  return core.getInput('enforce') === '' || core.getBooleanInput('enforce');
 }
 
 async function writeFailureSummary(config: CheckConfig): Promise<void> {
-  const key = `${config.teamKeys[0] ?? 'ARV'}-123`;
+  const key = `${config.teamKeys[0] ?? 'ABC'}-123`;
   const skipLabel = config.skipLabel.trim();
   const allowedKeys =
     config.teamKeys.length > 0
@@ -39,7 +57,7 @@ async function writeFailureSummary(config: CheckConfig): Promise<void> {
       : 'Any Linear issue key, for example <code>ABC-123</code>, is accepted.';
   const escapeHatch = skipLabel
     ? ` If this change really has no ticket, add the <code>${skipLabel}</code> label.`
-    : '';
+    : ' If this change really has no ticket, ask an org admin to merge it through the ruleset bypass list.';
   const paragraph = (html: string): string => `<p>${html}</p>`;
 
   await core.summary
@@ -47,35 +65,31 @@ async function writeFailureSummary(config: CheckConfig): Promise<void> {
     .addRaw(
       paragraph(
         'Every PR to a production branch must show up on its Linear issue. ' +
-          'Link it in any one of these ways, then push or edit the PR to re-run the check.',
+          'Link it in one of these ways, then push or edit the PR to re-run the check.',
       ),
       true,
     )
-    .addHeading('1. Use the issue key in the branch name', 3)
+    .addHeading('Recommended: a magic word and the issue key in the PR description', 3)
     .addRaw(
       paragraph(
-        `For example <code>yourname/${key.toLowerCase()}-short-title</code>. ` +
-          'In Linear, open the issue and press <kbd>Cmd/Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>.</kbd> ' +
-          'to copy its git branch name.',
-      ),
-      true,
-    )
-    .addHeading('2. Put the issue key in the PR title', 3)
-    .addRaw(paragraph(`For example <code>${key}: Add billing export</code>.`), true)
-    .addHeading('3. Add a magic word and the issue key to the PR description', 3)
-    .addRaw(
-      paragraph(
-        `For example <code>Fixes ${key}</code> to close the issue on merge, ` +
-          `or <code>Part of ${key}</code> to link it without closing. ` +
+        `Add a line like <code>Part of ${key}</code> to link the PR without closing the issue. ` +
+          `Use <code>Fixes ${key}</code> only if merging this PR finishes the issue, since it closes the issue on merge. ` +
           'A key on its own, without a magic word, is ignored by Linear.',
       ),
       true,
     )
     .addDetails(
       'Accepted magic words',
-      'Closing: close(s/d), closing, fix(es/ed), fixing, resolve(s/d), resolving, ' +
-        'complete(s/d), completing. Non-closing: ref, refs, references, part of, related to, ' +
-        'contributes to.',
+      `Closing: ${CLOSING_WORDS.join(', ')}. Non-closing: ${NON_CLOSING_WORDS.join(', ')}.`,
+    )
+    .addHeading('Also accepted: the issue key in the branch name or PR title', 3)
+    .addRaw(
+      paragraph(
+        `For example the branch <code>yourname/${key.toLowerCase()}-short-title</code> ` +
+          `or the title <code>${key}: Add billing export</code>. ` +
+          'A key there can also link an unrelated Jira ticket with the same number, so prefer the description.',
+      ),
+      true,
     )
     .addRaw(paragraph(allowedKeys + escapeHatch), true)
     .write();
@@ -89,7 +103,7 @@ async function run(): Promise<void> {
   }
 
   const config = readConfig();
-  const enforce = core.getBooleanInput('enforce');
+  const enforce = readEnforce();
   const result = checkPullRequest(readPullRequest(payload), config);
 
   switch (result.status) {

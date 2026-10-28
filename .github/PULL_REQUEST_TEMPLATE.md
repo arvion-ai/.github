@@ -1,14 +1,13 @@
-Closes ARV-___
+Part of ARV-___
 
 <!--
-Every PR into main must be linked to a Linear issue. Any one of these works:
-  - the issue key in the branch name, e.g. yourname/arv-123-short-title
-    (in Linear, Cmd/Ctrl+Shift+. copies the branch name)
-  - the issue key in the PR title, e.g. "ARV-123: Add billing export"
-  - a magic word plus the key in this description, e.g. "Closes ARV-123",
-    or "Part of ARV-123" to link without closing the issue
+Every PR into main or production must be linked to a Linear issue.
+Replace ARV-___ above with the issue key, for example "Part of ARV-123".
+Use "Fixes ARV-123" instead only if merging this PR finishes the issue:
+it closes the issue on merge.
 A bare key without a magic word is ignored by Linear.
-No ticket? Add the "no-ticket" label.
+A key in the branch name or PR title also works, but it can link an
+unrelated Jira ticket with the same number, so prefer this line.
 -->
 
 ## What changed

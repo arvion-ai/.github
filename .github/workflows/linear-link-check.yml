@@ -5,19 +5,17 @@ name: Linear link check
 
 on:
   workflow_call:
+    # Leave the string inputs empty to use the action's defaults (see README).
     inputs:
       team-keys:
-        description: Comma-separated Linear team keys. Empty accepts any issue key.
+        description: Comma-separated Linear team keys. Empty uses the default; "*" accepts any issue key.
         type: string
-        default: ARV
       target-branches:
-        description: Comma-separated base branches to enforce on.
+        description: Comma-separated base branches to enforce on. Empty uses the default; "*" means all.
         type: string
-        default: main
       skip-label:
-        description: PR label that exempts the PR.
+        description: PR label that exempts the PR. Empty disables the exemption.
         type: string
-        default: no-ticket
       enforce:
         description: When false, report a warning instead of failing.
         type: boolean
@@ -49,17 +47,13 @@ jobs:
           sparse-checkout: actions/linear-link-check
           persist-credentials: false
 
-      # The inputs context is only populated under workflow_call, where enforce
-      # is always true or false. Under a direct pull_request trigger it is null,
-      # so fall back to the action's own defaults rather than passing empty strings.
+      # Under a direct pull_request trigger the inputs context is empty, so
+      # every input is passed as an empty string and the action uses its
+      # defaults. Under workflow_call, unset string inputs are empty too.
       - name: Check Linear link
-        if: toJSON(inputs.enforce) != 'null'
         uses: ./.linear-link-check/actions/linear-link-check
         with:
           team-keys: ${{ inputs.team-keys }}
           target-branches: ${{ inputs.target-branches }}
           skip-label: ${{ inputs.skip-label }}
           enforce: ${{ inputs.enforce }}
-      - name: Check Linear link (defaults)
-        if: toJSON(inputs.enforce) == 'null'
-        uses: ./.linear-link-check/actions/linear-link-check

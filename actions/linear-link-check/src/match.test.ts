@@ -1,8 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_TARGET_BRANCHES,
+  DEFAULT_TEAM_KEYS,
   MAGIC_WORDS,
   checkPullRequest,
   parseList,
+  resolveConfig,
   type CheckConfig,
   type CheckResult,
   type PullRequestInfo,
@@ -23,6 +28,7 @@ function pr(overrides: Partial<PullRequestInfo>): PullRequestInfo {
 }
 
 const unlinked: CheckResult = { status: 'unlinked' };
+const repoRoot = join(import.meta.dirname, '..', '..', '..');
 
 describe('branch name', () => {
   it.each([
@@ -30,6 +36,8 @@ describe('branch name', () => {
     ['michal/ARV-123-some-title', 'ARV-123'],
     ['arv-7', 'ARV-7'],
     ['feature/Arv-42', 'ARV-42'],
+    ['feature_ARV-123', 'ARV-123'],
+    ['me/arv-123_x', 'ARV-123'],
   ])('%s links %s', (branch, key) => {
     expect(checkPullRequest(pr({ branch }), config)).toEqual({ status: 'linked', source: 'branch', key });
   });
@@ -49,6 +57,7 @@ describe('PR title', () => {
     ['ARV-123: Add billing export', 'ARV-123'],
     ['Add billing export (ARV-9)', 'ARV-9'],
     ['[ARV-55] Add billing export', 'ARV-55'],
+    ['arv-153: Add billing export', 'ARV-153'],
   ])('%s links %s', (title, key) => {
     expect(checkPullRequest(pr({ title }), config)).toEqual({ status: 'linked', source: 'title', key });
   });
@@ -75,6 +84,16 @@ describe('PR body', () => {
     ['Resolves ARV-6.', 'ARV-6'],
     ['Mentions ARV-1 in passing. Fixes ARV-7', 'ARV-7'],
     ['Fixes https://linear.app/arvion/issue/ARV-8/some-title', 'ARV-8'],
+    ['part of arv-153', 'ARV-153'],
+    ['Part of **ARV-153**', 'ARV-153'],
+    ['Part of _ARV-153_', 'ARV-153'],
+    ['Implements ARV-10', 'ARV-10'],
+    ['Towards ARV-11', 'ARV-11'],
+    ['Relates to ARV-12', 'ARV-12'],
+    ['Fixes DES-5 and ARV-2', 'ARV-2'],
+    ['Fixes ENG-1, ARV-2', 'ARV-2'],
+    ['Fixes ENG-1 & ARV-2', 'ARV-2'],
+    ['<!-- Closes ARV-1 -->\nPart of ARV-2', 'ARV-2'],
   ])('%j links %s', (body, key) => {
     expect(checkPullRequest(pr({ body }), config)).toEqual({ status: 'linked', source: 'body', key });
   });
@@ -86,9 +105,40 @@ describe('PR body', () => {
     ['magic word inside another word', 'Prefixes ARV-123'],
     ['key embedded in a longer word', 'Fixes XARV-123'],
     ['non-allowed team', 'Fixes ENG-123'],
-    ['placeholder from the PR template', 'Closes ARV-___'],
+    ['placeholder from the PR template', 'Part of ARV-___'],
+    ['key in backticks', 'Part of `ARV-153`'],
+    ['key in a Markdown link', 'Part of [ARV-153](https://linear.app/arvion/issue/ARV-153)'],
+    ['key inside an HTML comment', '<!--\nCloses ARV-123\n-->'],
+    ['key inside an unclosed HTML comment', '<!--\nCloses ARV-123'],
+    ['list ends before an allowed key', 'Fixes ENG-1 then ARV-2'],
   ])('%s does not link', (_name, body) => {
     expect(checkPullRequest(pr({ body }), config)).toEqual(unlinked);
+  });
+});
+
+describe('PR template', () => {
+  it('an untouched template does not link', () => {
+    const body = readFileSync(join(repoRoot, '.github', 'PULL_REQUEST_TEMPLATE.md'), 'utf8');
+    expect(checkPullRequest(pr({ body }), config)).toEqual(unlinked);
+  });
+
+  it('links once the placeholder is filled in', () => {
+    const template = readFileSync(join(repoRoot, '.github', 'PULL_REQUEST_TEMPLATE.md'), 'utf8');
+    const body = template.replace('ARV-___', 'ARV-42');
+    expect(checkPullRequest(pr({ body }), config)).toEqual({ status: 'linked', source: 'body', key: 'ARV-42' });
+  });
+});
+
+describe('README', () => {
+  const readme = readFileSync(join(repoRoot, 'README.md'), 'utf8');
+
+  it.each(MAGIC_WORDS)('lists the magic word "%s"', (word) => {
+    expect(readme).toMatch(new RegExp(`[\\s,]${word}[,.]`));
+  });
+
+  it('lists the default team keys and target branches', () => {
+    expect(readme).toContain(`\`${DEFAULT_TEAM_KEYS.join(',')}\``);
+    expect(readme).toContain(`\`${DEFAULT_TARGET_BRANCHES.join(',')}\``);
   });
 });
 
@@ -110,6 +160,12 @@ describe('team keys', () => {
       key: 'ENG2-5',
     });
     expect(checkPullRequest(pr({ title: 'Add billing export' }), generic)).toEqual(unlinked);
+  });
+
+  it('only takes uppercase keys outside the branch with the generic pattern', () => {
+    const generic = { ...config, teamKeys: [] };
+    expect(checkPullRequest(pr({ title: 'Fix utf-8 decoding' }), generic)).toEqual(unlinked);
+    expect(checkPullRequest(pr({ body: 'Fixes utf-8 decoding' }), generic)).toEqual(unlinked);
   });
 });
 
@@ -139,6 +195,37 @@ describe('exemptions', () => {
 
   it('enforces on every branch when no target branches are set', () => {
     expect(checkPullRequest(pr({ baseBranch: 'develop' }), { ...config, targetBranches: [] })).toEqual(unlinked);
+  });
+});
+
+describe('resolveConfig', () => {
+  it('uses the defaults for empty inputs', () => {
+    expect(resolveConfig({ teamKeys: '', targetBranches: '', skipLabel: '' })).toEqual({
+      teamKeys: ['ARV', 'OSS', 'KIN'],
+      targetBranches: ['main', 'production'],
+      skipLabel: '',
+    });
+  });
+
+  it('treats "*" as no filter', () => {
+    expect(resolveConfig({ teamKeys: '*', targetBranches: '*', skipLabel: '' })).toMatchObject({
+      teamKeys: [],
+      targetBranches: [],
+    });
+  });
+
+  it('uses given values', () => {
+    expect(resolveConfig({ teamKeys: 'arv, ops', targetBranches: 'release', skipLabel: ' no-ticket ' })).toEqual({
+      teamKeys: ['ARV', 'OPS'],
+      targetBranches: ['release'],
+      skipLabel: 'no-ticket',
+    });
+  });
+
+  it('enforces on production by default', () => {
+    const defaults = resolveConfig({ teamKeys: '', targetBranches: '', skipLabel: '' });
+    expect(checkPullRequest(pr({ baseBranch: 'production' }), defaults)).toEqual(unlinked);
+    expect(checkPullRequest(pr({ title: 'KIN-4: Release' }), defaults)).toMatchObject({ status: 'linked' });
   });
 });
 

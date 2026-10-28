@@ -3892,8 +3892,8 @@ var require_webidl = __commonJS({
           });
         }
         for (const options of converters) {
-          const { key, defaultValue, required, converter } = options;
-          if (required === true) {
+          const { key, defaultValue, required: required2, converter } = options;
+          if (required2 === true) {
             if (!Object.hasOwn(dictionary, key)) {
               throw webidl.errors.exception({
                 header: prefix,
@@ -3906,7 +3906,7 @@ var require_webidl = __commonJS({
           if (hasDefault && value !== null) {
             value ??= defaultValue();
           }
-          if (required || hasDefault || value !== void 0) {
+          if (required2 || hasDefault || value !== void 0) {
             value = converter(value, prefix, `${argument}.${key}`);
             if (options.allowedValues && !options.allowedValues.includes(value)) {
               throw webidl.errors.exception({
@@ -24524,7 +24524,12 @@ var GitHub = Octokit.plugin(restEndpointMethods, paginateRest).defaults(defaults
 var context2 = new Context();
 
 // src/match.ts
+var DEFAULT_TEAM_KEYS = ["ARV", "OSS", "KIN"];
+var DEFAULT_TARGET_BRANCHES = ["main", "production"];
+var ANY = "*";
 var GENERIC_TEAM = "[A-Z][A-Z0-9]+";
+var BEFORE_KEY = "(?<![A-Za-z0-9])";
+var AFTER_KEY = "(?![A-Za-z0-9])";
 var CLOSING_WORDS = [
   "close",
   "closes",
@@ -24541,7 +24546,11 @@ var CLOSING_WORDS = [
   "complete",
   "completes",
   "completed",
-  "completing"
+  "completing",
+  "implement",
+  "implements",
+  "implemented",
+  "implementing"
 ];
 var NON_CLOSING_WORDS = [
   "ref",
@@ -24549,7 +24558,10 @@ var NON_CLOSING_WORDS = [
   "references",
   "part of",
   "related to",
-  "contributes to"
+  "relates to",
+  "contributes to",
+  "toward",
+  "towards"
 ];
 var MAGIC_WORDS = [...CLOSING_WORDS, ...NON_CLOSING_WORDS];
 function escapeRegExp(value) {
@@ -24558,28 +24570,52 @@ function escapeRegExp(value) {
 function parseList(value) {
   return value.split(",").map((item) => item.trim()).filter((item) => item.length > 0);
 }
-function teamPattern(teamKeys) {
-  if (teamKeys.length === 0) return GENERIC_TEAM;
-  return `(?:${teamKeys.map((key) => escapeRegExp(key.toUpperCase())).join("|")})`;
+function resolveList(value, defaults2) {
+  const list = parseList(value);
+  if (list.length === 0) return defaults2;
+  if (list.includes(ANY)) return [];
+  return list;
 }
-function keyPattern(teamKeys) {
-  return `\\b${teamPattern(teamKeys)}-\\d+\\b`;
+function resolveConfig(inputs) {
+  return {
+    teamKeys: resolveList(inputs.teamKeys, DEFAULT_TEAM_KEYS).map((key) => key.toUpperCase()),
+    targetBranches: resolveList(inputs.targetBranches, DEFAULT_TARGET_BRANCHES),
+    skipLabel: inputs.skipLabel.trim()
+  };
+}
+function keyRegExp(teamKeys, anyCase, flags = "") {
+  const team = teamKeys.length === 0 ? GENERIC_TEAM : `(?:${teamKeys.map((key) => escapeRegExp(key)).join("|")})`;
+  const caseFlag = teamKeys.length > 0 || anyCase ? "i" : "";
+  return new RegExp(`${BEFORE_KEY}${team}-\\d+${AFTER_KEY}`, caseFlag + flags);
 }
 function findKeyInBranch(branch, teamKeys) {
-  const match = new RegExp(keyPattern(teamKeys), "i").exec(branch);
-  return match?.[0].toUpperCase();
+  return keyRegExp(teamKeys, true).exec(branch)?.[0].toUpperCase();
 }
 function findKeyInTitle(title, teamKeys) {
-  return new RegExp(keyPattern(teamKeys)).exec(title)?.[0];
+  return keyRegExp(teamKeys, false).exec(title)?.[0].toUpperCase();
 }
+function stripComments(body) {
+  return body.replace(/<!--[\s\S]*?(?:-->|$)/g, " ");
+}
+var LIST_ITEM = /^[*_]*(?:https?:\/\/linear\.app\/[\w-]+\/issue\/)?([A-Za-z][A-Za-z0-9]*-\d+)(?![A-Za-z0-9])[*_]*/;
+var LIST_SEPARATOR = /^\s*(?:,|&|\band\b)\s*/i;
 function findKeyInBody(body, teamKeys) {
+  const text = stripComments(body);
   const words = MAGIC_WORDS.map((word) => word.replace(" ", "\\s+")).join("|");
-  const urlPrefix = String.raw`(?:https?://linear\.app/[\w-]+/issue/)?`;
-  const candidate = new RegExp(String.raw`\b(?:${words})\b[\s:]*${urlPrefix}(\S+)`, "gi");
-  const key = new RegExp(`^${keyPattern(teamKeys)}`);
-  for (const match of body.matchAll(candidate)) {
-    const found = key.exec(match[1] ?? "");
-    if (found) return found[0];
+  const magicWord = new RegExp(String.raw`\b(?:${words})\b[\s:]*`, "gi");
+  const allowed = keyRegExp(teamKeys, false);
+  for (const match of text.matchAll(magicWord)) {
+    let rest = text.slice(match.index + match[0].length);
+    for (; ; ) {
+      const item = LIST_ITEM.exec(rest);
+      if (!item) break;
+      const candidate = item[1] ?? "";
+      if (allowed.exec(candidate)?.[0] === candidate) return candidate.toUpperCase();
+      rest = rest.slice(item[0].length);
+      const separator = LIST_SEPARATOR.exec(rest);
+      if (!separator) break;
+      rest = rest.slice(separator[0].length);
+    }
   }
   return void 0;
 }
@@ -24607,47 +24643,55 @@ function checkPullRequest(pr, config) {
 }
 
 // src/index.ts
+function required(value, field) {
+  if (value === void 0) throw new Error(`The pull_request payload has no ${field}.`);
+  return value;
+}
 function readPullRequest(payload) {
   return {
-    branch: payload.head?.ref ?? "",
-    baseBranch: payload.base?.ref ?? "",
-    title: payload.title ?? "",
+    branch: required(payload.head?.ref, "head.ref"),
+    baseBranch: required(payload.base?.ref, "base.ref"),
+    title: required(payload.title, "title"),
+    // GitHub sends a null body for an empty description.
     body: payload.body ?? "",
-    author: payload.user?.login ?? "",
-    labels: (payload.labels ?? []).map((label) => label.name ?? "")
+    author: required(payload.user?.login, "user.login"),
+    labels: (payload.labels ?? []).map((label) => required(label.name, "labels[].name"))
   };
 }
 function readConfig() {
-  return {
-    teamKeys: parseList(getInput("team-keys")).map((key) => key.toUpperCase()),
-    targetBranches: parseList(getInput("target-branches")),
+  return resolveConfig({
+    teamKeys: getInput("team-keys"),
+    targetBranches: getInput("target-branches"),
     skipLabel: getInput("skip-label")
-  };
+  });
+}
+function readEnforce() {
+  return getInput("enforce") === "" || getBooleanInput("enforce");
 }
 async function writeFailureSummary(config) {
-  const key = `${config.teamKeys[0] ?? "ARV"}-123`;
+  const key = `${config.teamKeys[0] ?? "ABC"}-123`;
   const skipLabel = config.skipLabel.trim();
   const allowedKeys = config.teamKeys.length > 0 ? `Allowed team keys: ${config.teamKeys.map((team) => `<code>${team}</code>`).join(", ")}.` : "Any Linear issue key, for example <code>ABC-123</code>, is accepted.";
-  const escapeHatch = skipLabel ? ` If this change really has no ticket, add the <code>${skipLabel}</code> label.` : "";
+  const escapeHatch = skipLabel ? ` If this change really has no ticket, add the <code>${skipLabel}</code> label.` : " If this change really has no ticket, ask an org admin to merge it through the ruleset bypass list.";
   const paragraph = (html) => `<p>${html}</p>`;
   await summary.addHeading("This pull request is not linked to a Linear issue", 2).addRaw(
     paragraph(
-      "Every PR to a production branch must show up on its Linear issue. Link it in any one of these ways, then push or edit the PR to re-run the check."
+      "Every PR to a production branch must show up on its Linear issue. Link it in one of these ways, then push or edit the PR to re-run the check."
     ),
     true
-  ).addHeading("1. Use the issue key in the branch name", 3).addRaw(
+  ).addHeading("Recommended: a magic word and the issue key in the PR description", 3).addRaw(
     paragraph(
-      `For example <code>yourname/${key.toLowerCase()}-short-title</code>. In Linear, open the issue and press <kbd>Cmd/Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>.</kbd> to copy its git branch name.`
-    ),
-    true
-  ).addHeading("2. Put the issue key in the PR title", 3).addRaw(paragraph(`For example <code>${key}: Add billing export</code>.`), true).addHeading("3. Add a magic word and the issue key to the PR description", 3).addRaw(
-    paragraph(
-      `For example <code>Fixes ${key}</code> to close the issue on merge, or <code>Part of ${key}</code> to link it without closing. A key on its own, without a magic word, is ignored by Linear.`
+      `Add a line like <code>Part of ${key}</code> to link the PR without closing the issue. Use <code>Fixes ${key}</code> only if merging this PR finishes the issue, since it closes the issue on merge. A key on its own, without a magic word, is ignored by Linear.`
     ),
     true
   ).addDetails(
     "Accepted magic words",
-    "Closing: close(s/d), closing, fix(es/ed), fixing, resolve(s/d), resolving, complete(s/d), completing. Non-closing: ref, refs, references, part of, related to, contributes to."
+    `Closing: ${CLOSING_WORDS.join(", ")}. Non-closing: ${NON_CLOSING_WORDS.join(", ")}.`
+  ).addHeading("Also accepted: the issue key in the branch name or PR title", 3).addRaw(
+    paragraph(
+      `For example the branch <code>yourname/${key.toLowerCase()}-short-title</code> or the title <code>${key}: Add billing export</code>. A key there can also link an unrelated Jira ticket with the same number, so prefer the description.`
+    ),
+    true
   ).addRaw(paragraph(allowedKeys + escapeHatch), true).write();
 }
 async function run() {
@@ -24657,7 +24701,7 @@ async function run() {
     return;
   }
   const config = readConfig();
-  const enforce = getBooleanInput("enforce");
+  const enforce = readEnforce();
   const result = checkPullRequest(readPullRequest(payload), config);
   switch (result.status) {
     case "exempt":
