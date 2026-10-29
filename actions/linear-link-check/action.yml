@@ -1,0 +1,26 @@
+name: Linear link check
+description: Fails a pull request that is not linked to a Linear issue in a way Linear recognizes.
+author: arvion-ai
+# Inputs have no defaults here on purpose: an empty input means "use the
+# default", and the defaults live in src/match.ts. That way the reusable
+# workflow can pass its inputs through even when they are unset.
+inputs:
+  team-keys:
+    description: >-
+      Comma-separated Linear team keys that count as issue keys, e.g. "ARV,OPS".
+      Empty uses the default, ARV,OSS,KIN. "*" accepts any key matching [A-Z][A-Z0-9]+-<number>.
+    required: false
+  target-branches:
+    description: >-
+      Comma-separated base branches to enforce on. PRs into other branches pass with a notice.
+      Empty uses the default, main,production. "*" enforces on all branches.
+    required: false
+  skip-label:
+    description: PR label that exempts the PR from the check. Empty (the default) disables the exemption.
+    required: false
+  enforce:
+    description: When false, an unlinked PR produces a warning instead of a failure. Empty means true.
+    required: false
+runs:
+  using: node24
+  main: dist/index.js

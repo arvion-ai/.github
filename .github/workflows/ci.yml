@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - actions/linear-link-check/**
+      - .github/workflows/ci.yml
+      - README.md
+      - .github/PULL_REQUEST_TEMPLATE.md
+  pull_request:
+    paths:
+      - actions/linear-link-check/**
+      - .github/workflows/ci.yml
+      - README.md
+      - .github/PULL_REQUEST_TEMPLATE.md
+
+permissions:
+  contents: read
+
+jobs:
+  linear-link-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: actions/linear-link-check
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: actions/linear-link-check/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Fail if dist/ is out of date
+        run: |
+          if [ -n "$(git status --porcelain -- dist)" ]; then
+            echo "::error::dist/ does not match the source. Run 'npm run build' in actions/linear-link-check and commit the result."
+            git status --porcelain -- dist
+            exit 1
+          fi

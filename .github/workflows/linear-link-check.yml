@@ -1,0 +1,62 @@
+# Reusable workflow: fails PRs that are not linked to a Linear issue.
+# Repos call it via the "Linear link check" starter workflow. The pull_request
+# trigger lets it also run directly as an org ruleset "required workflow".
+name: Linear link check
+
+on:
+  workflow_call:
+    # Leave the string inputs empty to use the action's defaults (see README).
+    inputs:
+      team-keys:
+        description: Comma-separated Linear team keys. Empty uses the default; "*" accepts any issue key.
+        type: string
+      target-branches:
+        description: Comma-separated base branches to enforce on. Empty uses the default; "*" means all.
+        type: string
+      skip-label:
+        description: PR label that exempts the PR. Empty disables the exemption.
+        type: string
+      enforce:
+        description: When false, report a warning instead of failing.
+        type: boolean
+        default: true
+  pull_request:
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
+  # A required check must also report in the merge queue. The action passes
+  # there with a notice, since the PR itself was already checked.
+  merge_group:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  linear-link:
+    name: linear-link
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Check out the action and run it as a local action. A remote
+      # `uses: ...@main` would be downloaded when the job starts, even for a
+      # skipped step. In arvion-ai/.github itself this checks out the PR, so
+      # changes to the action are tested before they reach main; in every other
+      # repo it checks out main.
+      - name: Check out the action
+        uses: actions/checkout@v7
+        with:
+          repository: arvion-ai/.github
+          ref: ${{ github.repository == 'arvion-ai/.github' && github.sha || 'main' }}
+          path: .linear-link-check
+          sparse-checkout: actions/linear-link-check
+          persist-credentials: false
+
+      # Under a direct pull_request trigger the inputs context is empty, so
+      # every input is passed as an empty string and the action uses its
+      # defaults. Under workflow_call, unset string inputs are empty too.
+      - name: Check Linear link
+        uses: ./.linear-link-check/actions/linear-link-check
+        with:
+          team-keys: ${{ inputs.team-keys }}
+          target-branches: ${{ inputs.target-branches }}
+          skip-label: ${{ inputs.skip-label }}
+          enforce: ${{ inputs.enforce }}

@@ -1,0 +1,23 @@
+# Fails pull requests that are not linked to a Linear issue.
+# Link a PR with "Part of ARV-123" in the description. A key in the branch
+# name or title also works.
+name: Linear link check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
+  # A required check must also report in the merge queue. The action passes
+  # there with a notice, since the PR itself was already checked.
+  merge_group:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  linear-link:
+    uses: arvion-ai/.github/.github/workflows/linear-link-check.yml@main
+    # with:
+    #   team-keys: ARV,OSS,KIN
+    #   target-branches: main,production
+    #   enforce: true
