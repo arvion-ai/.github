@@ -27,7 +27,7 @@ Keys must not touch a letter or digit: `XARV-123` and `ARV-123x` do not count as
 
 These PRs pass with a notice instead of being checked:
 
-- PRs opened by a bot, i.e. any author whose login ends in `[bot]` (Dependabot, Renovate, GitHub Actions, and so on), unless `exempt-bots` is `false`.
+- PRs opened by a bot, i.e. any author whose login ends in `[bot]` (Dependabot, Renovate, GitHub Actions, and so on), but only where `exempt-bots` is `true`. By default a bot PR needs a key like any other.
 - PRs with the `skip-label` label, if one is set. None is set by default: a label can be added by anyone with triage access, with no reason and no record. A PR that has no ticket yet gets one.
 - PRs whose base branch is not in `target-branches`. By default the check runs on PRs into `main` and `production`, so release PRs need a Linear key too.
 
@@ -40,7 +40,7 @@ An empty input uses the default. The defaults are defined once, in [`src/match.t
 | `team-keys`       | `ARV,OSS,KIN`        | Comma-separated Linear team keys. `*` accepts any key matching `[A-Z][A-Z0-9]+-<number>`.  |
 | `target-branches` | `main,production`    | Comma-separated base branches to enforce on. `*` enforces on all branches.                 |
 | `skip-label`      | none                 | Label that exempts a PR. Empty disables the exemption.                                     |
-| `exempt-bots`     | `true`               | When `false`, a PR opened by a bot needs a key like any other.                             |
+| `exempt-bots`     | `false`              | When `true`, a PR opened by a bot passes without a key.                                    |
 | `enforce`         | `true`               | When `false`, an unlinked PR gets a warning and the check still passes.                    |
 
 The pieces:

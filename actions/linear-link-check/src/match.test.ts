@@ -239,7 +239,7 @@ describe('resolveConfig', () => {
       teamKeys: ['ARV', 'OSS', 'KIN'],
       targetBranches: ['main', 'production'],
       skipLabel: '',
-      exemptBots: true,
+      exemptBots: false,
     });
   });
 
@@ -270,6 +270,7 @@ describe('resolveConfig', () => {
   it('enforces on production by default', () => {
     const defaults = resolveConfig({ teamKeys: '', targetBranches: '', skipLabel: '', exemptBots: '' });
     expect(checkPullRequest(pr({ baseBranch: 'production' }), defaults)).toEqual(unlinked);
+    expect(checkPullRequest(pr({ author: 'dependabot[bot]' }), defaults)).toEqual(unlinked);
     expect(checkPullRequest(pr({ title: 'KIN-4: Release' }), defaults)).toMatchObject({ status: 'linked' });
   });
 });

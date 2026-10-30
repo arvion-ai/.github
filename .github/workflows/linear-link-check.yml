@@ -17,9 +17,9 @@ on:
         description: PR label that exempts the PR. Empty disables the exemption.
         type: string
       exempt-bots:
-        description: When false, a PR opened by a bot needs a Linear key like any other.
+        description: When true, a PR opened by a bot passes without a Linear key.
         type: boolean
-        default: true
+        default: false
       enforce:
         description: When false, report a warning instead of failing.
         type: boolean

@@ -20,5 +20,5 @@ jobs:
     # with:
     #   team-keys: ARV,OSS,KIN
     #   target-branches: main,production
-    #   exempt-bots: true
+    #   exempt-bots: false
     #   enforce: true

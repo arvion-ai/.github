@@ -24526,7 +24526,7 @@ var context2 = new Context();
 // src/match.ts
 var DEFAULT_TEAM_KEYS = ["ARV", "OSS", "KIN"];
 var DEFAULT_TARGET_BRANCHES = ["main", "production"];
-var DEFAULT_EXEMPT_BOTS = true;
+var DEFAULT_EXEMPT_BOTS = false;
 var ANY = "*";
 var GENERIC_TEAM = "[A-Z][A-Z0-9]+";
 var BEFORE_KEY = "(?<![A-Za-z0-9])";

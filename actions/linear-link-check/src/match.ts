@@ -40,7 +40,7 @@ export type CheckResult =
 // workflow leave the inputs empty so these apply.
 export const DEFAULT_TEAM_KEYS = ['ARV', 'OSS', 'KIN'];
 export const DEFAULT_TARGET_BRANCHES = ['main', 'production'];
-export const DEFAULT_EXEMPT_BOTS = true;
+export const DEFAULT_EXEMPT_BOTS = false;
 /** Input value that disables a list filter: any team key, or every base branch. */
 export const ANY = '*';
 
