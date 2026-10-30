@@ -3,8 +3,15 @@ description: Fails a pull request that is not linked to a Linear issue in a way 
 author: arvion-ai
 # Inputs have no defaults here on purpose: an empty input means "use the
 # default", and the defaults live in src/match.ts. That way the reusable
-# workflow can pass its inputs through even when they are unset.
+# workflow can pass its inputs through even when they are unset. The one
+# exception is github-token, whose default only a workflow expression can give.
 inputs:
+  github-token:
+    description: >-
+      Token for reading the commits of a PR that would fail, to tell whether it changes any files.
+      Needs read access to contents. Defaults to the workflow's token.
+    required: false
+    default: ${{ github.token }}
   team-keys:
     description: >-
       Comma-separated Linear team keys that count as issue keys, e.g. "ARV,OPS".

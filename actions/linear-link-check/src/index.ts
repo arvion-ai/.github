@@ -1,5 +1,6 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
+import { changesNoFiles } from './changes.js';
 import {
   checkPullRequest,
   CLOSING_WORDS,
@@ -13,8 +14,8 @@ interface PullRequestPayload {
   title?: string;
   body?: string | null;
   user?: { login?: string };
-  head?: { ref?: string };
-  base?: { ref?: string };
+  head?: { ref?: string; sha?: string };
+  base?: { ref?: string; sha?: string };
   labels?: { name?: string }[];
 }
 
@@ -42,6 +43,25 @@ function readConfig(): CheckConfig {
     skipLabel: core.getInput('skip-label'),
     exemptBots: core.getInput('exempt-bots'),
   });
+}
+
+/**
+ * Whether the PR changes no files, read through the GitHub API. An API error
+ * counts as a change, so the PR fails as it would without this exemption.
+ */
+async function pullRequestChangesNoFiles(payload: PullRequestPayload): Promise<boolean> {
+  try {
+    const octokit = github.getOctokit(core.getInput('github-token', { required: true }));
+    return await changesNoFiles(octokit.rest, {
+      ...github.context.repo,
+      baseSha: required(payload.base?.sha, 'base.sha'),
+      headSha: required(payload.head?.sha, 'head.sha'),
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    core.warning(`Could not tell whether this PR changes any files, so it is checked as usual: ${message}`);
+    return false;
+  }
 }
 
 /** Empty means the default, true. */
@@ -115,6 +135,11 @@ async function run(): Promise<void> {
       core.info(`Linked to Linear issue ${result.key} via the PR ${result.source}.`);
       return;
     case 'unlinked': {
+      // Asked only here, so a linked or exempt PR makes no API call.
+      if (await pullRequestChangesNoFiles(payload)) {
+        core.notice('Linear link check skipped: the PR changes no files.');
+        return;
+      }
       await writeFailureSummary(config);
       const message =
         'This PR is not linked to a Linear issue. See the job summary for how to link it.';
