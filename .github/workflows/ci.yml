@@ -8,12 +8,9 @@ on:
       - .github/workflows/ci.yml
       - README.md
       - .github/PULL_REQUEST_TEMPLATE.md
+  # No paths filter: linear-link-check is a required check, so it must
+  # report on every pull request, including ones that change only profile/.
   pull_request:
-    paths:
-      - actions/linear-link-check/**
-      - .github/workflows/ci.yml
-      - README.md
-      - .github/PULL_REQUEST_TEMPLATE.md
 
 permissions:
   contents: read
