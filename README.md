@@ -1,6 +1,73 @@
+<p align="center">
+  <img src="assets/banner.jpg" width="100%" alt="arvion-ai/.github, public on purpose. Org-wide defaults for arvion-ai: the org profile, the pull request template and the Linear link check.">
+</p>
+
+<p align="center">
+  <a href="#why-this-repository-is-public">Why it is public</a>
+  ·
+  <a href="#what-is-in-it-and-what-is-not">What is in it</a>
+  ·
+  <a href="#before-you-add-something">Before you add something</a>
+  ·
+  <a href="#linear-link-check">Linear link check</a>
+</p>
+
 # arvion-ai/.github
 
-Org-wide defaults for arvion-ai: the org profile (`profile/`), the default pull request template, starter workflows (`workflow-templates/`), and shared actions (`actions/`).
+Org-wide defaults for arvion-ai. GitHub reads these files from this repository and applies them across the organization.
+
+| Path | What it is | Used by |
+| --- | --- | --- |
+| [`profile/README.md`](profile/README.md) | The public profile at [github.com/arvion-ai](https://github.com/arvion-ai) | Anyone who visits the organization |
+| [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) | The default pull request template | Every repository without its own template |
+| [`.github/workflows/linear-link-check.yml`](.github/workflows/linear-link-check.yml) | The reusable Linear link check | Repositories that opt in, and the org ruleset |
+| [`workflow-templates/`](workflow-templates/) | The "Linear link check" starter workflow | **Actions → New workflow** in any repository |
+| [`actions/linear-link-check/`](actions/linear-link-check/) | The TypeScript action behind the check | The reusable workflow |
+
+## Why this repository is public
+
+Each of these needs it:
+
+1. **The org profile.** GitHub shows `profile/README.md` on the organization page only when it is in a public `.github` repository. A private profile is possible, from a separate `.github-private` repository, but only members see it. ([GitHub docs](https://docs.github.com/en/organizations/collaborating-with-groups-in-organizations/customizing-your-organizations-profile))
+2. **The pull request template.** It is one of GitHub's default community health files, and GitHub reads those only from a public `.github` repository: "A repository for default files cannot be private." ([GitHub docs](https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file))
+3. **The Linear link check.** The reusable workflow fetches the action from this repository with `actions/checkout`, using the calling repository's own `GITHUB_TOKEN`. That token can read only the repository it runs in ([GitHub docs](https://docs.github.com/en/actions/concepts/security/github_token)), so the fetch works because this repository is public. If it were private, every repository would need a cross-repository token stored as a secret, or the check would have to be rebuilt around GitHub's private sharing setting. Public repositories could not call a private reusable workflow at all, and starter workflows from a private `.github` are offered only to private repositories. ([GitHub docs](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations))
+
+None of it needs to be private. It is configuration and a small open check.
+
+## What is in it, and what is not
+
+Last checked on 2026-10-30, across every file, every commit on every branch and every pull request.
+
+**In it**
+
+- The org profile text and its images.
+- The pull request template.
+- The Linear link check: its source, tests, bundled build, and an npm lockfile that resolves only from the public npm registry.
+- Our Linear team keys (`ARV`, `OSS`, `KIN`) as the check's defaults. A key opens nothing without a login to our Linear workspace.
+
+**Not in it**
+
+- No secrets. The repository has no Actions secrets, variables, environments, deploy keys or webhooks, and no credential appears in any file or commit.
+- No Linear API key. The check never calls Linear. It reads the pull request from the event GitHub sends, and calls the GitHub API, read-only, only to tell whether a failing pull request changes any files.
+- No customer names or data, no product source, and no infrastructure details such as servers, cloud accounts or IP addresses.
+- No logs from other repositories. When a repository runs the check, the run and its logs stay in that repository.
+
+**How the workflows here stay safe in public**
+
+- They run on `pull_request`, never `pull_request_target`, so a pull request from a fork gets a read-only token and no secrets.
+- Each workflow asks only for read access: `contents: read`, plus `pull-requests: read` for the check. The repository's default token is read-only too.
+- The checkout of the action sets `persist-credentials: false`, so no token is left on disk for later steps.
+- Workflow runs from a first-time outside contributor wait for a maintainer's approval.
+
+## Before you add something
+
+Everything here is public as soon as it is pushed: files, commit messages, pull requests and their comments. GitHub keeps edit history, so removing a line later does not unpublish it.
+
+- No secrets, tokens or keys, expired ones included. A workflow that needs one gets it from the calling repository's secrets.
+- No customer names, customer repository names, or anything copied from a customer's code.
+- No details of private repositories, internal systems or audit scope in pull request titles, descriptions or comments. Link the Linear issue and keep that discussion there.
+- Keep workflows on `pull_request` with read-only permissions.
+- Commit with your GitHub no-reply address if you don't want your personal email on a public commit: **Settings → Emails → Keep my email addresses private**.
 
 ## Linear link check
 
@@ -85,7 +152,7 @@ GitHub then runs the workflow in every targeted repo through its `pull_request` 
 ### Recommended rollout
 
 1. Add the starter workflow to repos with `enforce: false` in its `with:` block. For the "Require workflows" path, temporarily make an empty `enforce` mean false in `src/index.ts` instead.
-2. For about a week, unlinked PRs get a warning annotation and a job summary, but nothing is blocked. Check who is getting warnings, whether any repos need extra team keys or target branches, and whether Scytale counts release PRs correctly.
+2. For about a week, unlinked PRs get a warning annotation and a job summary, but nothing is blocked. Check who is getting warnings, whether any repos need extra team keys or target branches, and whether our compliance tooling counts release PRs correctly.
 3. Switch to `enforce: true` and turn on the ruleset.
 
 ### Developing the action
