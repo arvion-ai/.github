@@ -16,6 +16,10 @@ on:
       skip-label:
         description: PR label that exempts the PR. Empty disables the exemption.
         type: string
+      exempt-bots:
+        description: When false, a PR opened by a bot needs a Linear key like any other.
+        type: boolean
+        default: true
       enforce:
         description: When false, report a warning instead of failing.
         type: boolean
@@ -59,4 +63,5 @@ jobs:
           team-keys: ${{ inputs.team-keys }}
           target-branches: ${{ inputs.target-branches }}
           skip-label: ${{ inputs.skip-label }}
+          exempt-bots: ${{ inputs.exempt-bots }}
           enforce: ${{ inputs.enforce }}

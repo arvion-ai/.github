@@ -18,6 +18,11 @@ inputs:
   skip-label:
     description: PR label that exempts the PR from the check. Empty (the default) disables the exemption.
     required: false
+  exempt-bots:
+    description: >-
+      Whether a PR opened by a bot (an author whose login ends in [bot]) passes without a key.
+      Empty means true. Set false where every change, bot PRs included, must link an issue.
+    required: false
   enforce:
     description: When false, an unlinked PR produces a warning instead of a failure. Empty means true.
     required: false

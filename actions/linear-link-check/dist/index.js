@@ -24526,6 +24526,7 @@ var context2 = new Context();
 // src/match.ts
 var DEFAULT_TEAM_KEYS = ["ARV", "OSS", "KIN"];
 var DEFAULT_TARGET_BRANCHES = ["main", "production"];
+var DEFAULT_EXEMPT_BOTS = true;
 var ANY = "*";
 var GENERIC_TEAM = "[A-Z][A-Z0-9]+";
 var BEFORE_KEY = "(?<![A-Za-z0-9])";
@@ -24578,11 +24579,19 @@ function resolveList(value, defaults2) {
   if (list.includes(ANY)) return [];
   return list;
 }
+function resolveBoolean(name, value, defaultValue) {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "") return defaultValue;
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
+  throw new Error(`The ${name} input must be true or false, not "${value}".`);
+}
 function resolveConfig(inputs) {
   return {
     teamKeys: resolveList(inputs.teamKeys, DEFAULT_TEAM_KEYS).map((key) => key.toUpperCase()),
     targetBranches: resolveList(inputs.targetBranches, DEFAULT_TARGET_BRANCHES),
-    skipLabel: inputs.skipLabel.trim()
+    skipLabel: inputs.skipLabel.trim(),
+    exemptBots: resolveBoolean("exempt-bots", inputs.exemptBots, DEFAULT_EXEMPT_BOTS)
   };
 }
 function keyRegExp(teamKeys, anyCase, flags = "") {
@@ -24633,7 +24642,7 @@ function isBot(author) {
   return author.toLowerCase().endsWith("[bot]");
 }
 function checkPullRequest(pr, config) {
-  if (isBot(pr.author)) {
+  if (config.exemptBots && isBot(pr.author)) {
     return { status: "exempt", reason: `author ${pr.author} is a bot` };
   }
   const skipLabel = config.skipLabel.trim().toLowerCase();
@@ -24673,7 +24682,8 @@ function readConfig() {
   return resolveConfig({
     teamKeys: getInput("team-keys"),
     targetBranches: getInput("target-branches"),
-    skipLabel: getInput("skip-label")
+    skipLabel: getInput("skip-label"),
+    exemptBots: getInput("exempt-bots")
   });
 }
 function readEnforce() {
@@ -24683,7 +24693,7 @@ async function writeFailureSummary(config) {
   const key = `${config.teamKeys[0] ?? "ABC"}-123`;
   const skipLabel = config.skipLabel.trim();
   const allowedKeys = config.teamKeys.length > 0 ? `Allowed team keys: ${config.teamKeys.map((team) => `<code>${team}</code>`).join(", ")}.` : "Any Linear issue key, for example <code>ABC-123</code>, is accepted.";
-  const escapeHatch = skipLabel ? ` If this change really has no ticket, add the <code>${skipLabel}</code> label.` : " If this change really has no ticket, ask an org admin to merge it through the ruleset bypass list.";
+  const escapeHatch = skipLabel ? ` If this change really has no ticket, add the <code>${skipLabel}</code> label.` : " If this change has no ticket yet, open one and link it.";
   const paragraph = (html) => `<p>${html}</p>`;
   await summary.addHeading("This pull request is not linked to a Linear issue", 2).addRaw(
     paragraph(

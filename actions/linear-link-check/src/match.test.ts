@@ -13,7 +13,7 @@ import {
   type PullRequestInfo,
 } from './match.js';
 
-const config: CheckConfig = { teamKeys: ['ARV'], targetBranches: ['main'], skipLabel: 'no-ticket' };
+const config: CheckConfig = { teamKeys: ['ARV'], targetBranches: ['main'], skipLabel: 'no-ticket', exemptBots: true };
 
 function pr(overrides: Partial<PullRequestInfo>): PullRequestInfo {
   return {
@@ -202,6 +202,16 @@ describe('exemptions', () => {
     },
   );
 
+  it('checks a bot PR like any other when bots are not exempt', () => {
+    const strict = { ...config, exemptBots: false };
+    expect(checkPullRequest(pr({ author: 'arvion-bot[bot]' }), strict)).toEqual(unlinked);
+    expect(checkPullRequest(pr({ author: 'arvion-bot[bot]', body: 'Part of ARV-7' }), strict)).toEqual({
+      status: 'linked',
+      source: 'body',
+      key: 'ARV-7',
+    });
+  });
+
   it('does not exempt a human whose name contains "bot"', () => {
     expect(checkPullRequest(pr({ author: 'robotics-dev' }), config)).toEqual(unlinked);
   });
@@ -225,30 +235,40 @@ describe('exemptions', () => {
 
 describe('resolveConfig', () => {
   it('uses the defaults for empty inputs', () => {
-    expect(resolveConfig({ teamKeys: '', targetBranches: '', skipLabel: '' })).toEqual({
+    expect(resolveConfig({ teamKeys: '', targetBranches: '', skipLabel: '', exemptBots: '' })).toEqual({
       teamKeys: ['ARV', 'OSS', 'KIN'],
       targetBranches: ['main', 'production'],
       skipLabel: '',
+      exemptBots: true,
     });
   });
 
   it('treats "*" as no filter', () => {
-    expect(resolveConfig({ teamKeys: '*', targetBranches: '*', skipLabel: '' })).toMatchObject({
+    expect(resolveConfig({ teamKeys: '*', targetBranches: '*', skipLabel: '', exemptBots: '' })).toMatchObject({
       teamKeys: [],
       targetBranches: [],
     });
   });
 
   it('uses given values', () => {
-    expect(resolveConfig({ teamKeys: 'arv, ops', targetBranches: 'release', skipLabel: ' no-ticket ' })).toEqual({
+    expect(
+      resolveConfig({ teamKeys: 'arv, ops', targetBranches: 'release', skipLabel: ' no-ticket ', exemptBots: 'false' }),
+    ).toEqual({
       teamKeys: ['ARV', 'OPS'],
       targetBranches: ['release'],
       skipLabel: 'no-ticket',
+      exemptBots: false,
     });
   });
 
+  it('refuses an exempt-bots value that is not true or false', () => {
+    expect(() => resolveConfig({ teamKeys: '', targetBranches: '', skipLabel: '', exemptBots: 'no' })).toThrow(
+      /exempt-bots input must be true or false/,
+    );
+  });
+
   it('enforces on production by default', () => {
-    const defaults = resolveConfig({ teamKeys: '', targetBranches: '', skipLabel: '' });
+    const defaults = resolveConfig({ teamKeys: '', targetBranches: '', skipLabel: '', exemptBots: '' });
     expect(checkPullRequest(pr({ baseBranch: 'production' }), defaults)).toEqual(unlinked);
     expect(checkPullRequest(pr({ title: 'KIN-4: Release' }), defaults)).toMatchObject({ status: 'linked' });
   });
