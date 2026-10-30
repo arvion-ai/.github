@@ -30,10 +30,11 @@ These PRs pass with a notice instead of being checked:
 - PRs opened by a bot, i.e. any author whose login ends in `[bot]` (Dependabot, Renovate, GitHub Actions, and so on).
 - PRs with the `skip-label` label, if one is set. None is set by default: a label can be added by anyone with triage access, with no reason and no record. For a PR that really has no ticket, an org admin merges it through the ruleset bypass list.
 - PRs whose base branch is not in `target-branches`. By default the check runs on PRs into `main` and `production`, so release PRs need a Linear key too.
+- PRs that change no files, i.e. whose head commit has the same tree as the merge base. After each release, GitHub offers to open such a PR from `production` into `main`: it carries only the release merge commits, and a squash merge would add an empty commit. Close it. The check tells from the git trees, not from the payload's `changed_files`, which GitHub can report as 0 for a PR that does change files.
 
-When a PR fails, the job summary explains the three ways to link it. The check reads the PR from the event payload. It needs no token and never comments on the PR. It re-runs when the PR is edited, labeled, unlabeled, or pushed to, so fixing the title, description, or label is enough.
+When a PR fails, the job summary explains the three ways to link it. The check reads the PR from the event payload. Only for a PR that would fail does it call the GitHub API, read-only with the workflow's token, to tell whether the PR changes any files; if that call fails, the PR fails. It never comments on the PR. It re-runs when the PR is edited, labeled, unlabeled, or pushed to, so fixing the title, description, or label is enough.
 
-An empty input uses the default. The defaults are defined once, in [`src/match.ts`](actions/linear-link-check/src/match.ts).
+An empty input uses the default. The defaults are defined once, in [`src/match.ts`](actions/linear-link-check/src/match.ts), except `github-token`'s, which is in `action.yml`.
 
 | Input             | Default              | Meaning                                                                                    |
 | ----------------- | -------------------- | ------------------------------------------------------------------------------------------ |
@@ -41,6 +42,7 @@ An empty input uses the default. The defaults are defined once, in [`src/match.t
 | `target-branches` | `main,production`    | Comma-separated base branches to enforce on. `*` enforces on all branches.                 |
 | `skip-label`      | none                 | Label that exempts a PR. Empty disables the exemption.                                     |
 | `enforce`         | `true`               | When `false`, an unlinked PR gets a warning and the check still passes.                    |
+| `github-token`    | the workflow's token | Reads a failing PR's commits to tell whether it changes any files. Needs `contents: read`. |
 
 The pieces:
 

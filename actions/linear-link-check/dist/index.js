@@ -20476,6 +20476,14 @@ var __awaiter2 = function(thisArg, _arguments, P, generator) {
     step((generator = generator.apply(thisArg, _arguments || [])).next());
   });
 };
+function getAuthString(token, options) {
+  if (!token && !options.auth) {
+    throw new Error("Parameter token or opts.auth is required");
+  } else if (token && options.auth) {
+    throw new Error("Parameters token and opts.auth may not both be specified");
+  }
+  return typeof options.auth === "string" ? options.auth : `token ${token}`;
+}
 function getProxyAgent(destinationUrl) {
   const hc = new httpClient.HttpClient();
   return hc.getAgent(destinationUrl);
@@ -20493,6 +20501,19 @@ function getProxyFetch(destinationUrl) {
 }
 function getApiBaseUrl() {
   return process.env["GITHUB_API_URL"] || "https://api.github.com";
+}
+function getUserAgentWithOrchestrationId(baseUserAgent) {
+  var _a;
+  const orchId = (_a = process.env["ACTIONS_ORCHESTRATION_ID"]) === null || _a === void 0 ? void 0 : _a.trim();
+  if (orchId) {
+    const sanitizedId = orchId.replace(/[^a-z0-9_.-]/gi, "_");
+    const tag = `actions_orchestration_id/${sanitizedId}`;
+    if (baseUserAgent === null || baseUserAgent === void 0 ? void 0 : baseUserAgent.includes(tag))
+      return baseUserAgent;
+    const ua = baseUserAgent ? `${baseUserAgent} ` : "";
+    return `${ua}${tag}`;
+  }
+  return baseUserAgent;
 }
 
 // node_modules/universal-user-agent/index.js
@@ -24519,9 +24540,36 @@ var defaults = {
   }
 };
 var GitHub = Octokit.plugin(restEndpointMethods, paginateRest).defaults(defaults);
+function getOctokitOptions(token, options) {
+  const opts = Object.assign({}, options || {});
+  const auth2 = getAuthString(token, opts);
+  if (auth2) {
+    opts.auth = auth2;
+  }
+  const userAgent2 = getUserAgentWithOrchestrationId(opts.userAgent);
+  if (userAgent2) {
+    opts.userAgent = userAgent2;
+  }
+  return opts;
+}
 
 // node_modules/@actions/github/lib/github.js
 var context2 = new Context();
+function getOctokit(token, options, ...additionalPlugins) {
+  const GitHubWithPlugins = GitHub.plugin(...additionalPlugins);
+  return new GitHubWithPlugins(getOctokitOptions(token, options));
+}
+
+// src/changes.ts
+async function changesNoFiles(api, pr) {
+  const { owner, repo, baseSha, headSha } = pr;
+  const [comparison, head] = await Promise.all([
+    // per_page bounds the commit list in the response; only the merge base is read.
+    api.repos.compareCommitsWithBasehead({ owner, repo, basehead: `${baseSha}...${headSha}`, per_page: 1 }),
+    api.git.getCommit({ owner, repo, commit_sha: headSha })
+  ]);
+  return comparison.data.merge_base_commit.commit.tree.sha === head.data.tree.sha;
+}
 
 // src/match.ts
 var DEFAULT_TEAM_KEYS = ["ARV", "OSS", "KIN"];
@@ -24676,6 +24724,20 @@ function readConfig() {
     skipLabel: getInput("skip-label")
   });
 }
+async function pullRequestChangesNoFiles(payload) {
+  try {
+    const octokit = getOctokit(getInput("github-token", { required: true }));
+    return await changesNoFiles(octokit.rest, {
+      ...context2.repo,
+      baseSha: required(payload.base?.sha, "base.sha"),
+      headSha: required(payload.head?.sha, "head.sha")
+    });
+  } catch (error2) {
+    const message = error2 instanceof Error ? error2.message : String(error2);
+    warning(`Could not tell whether this PR changes any files, so it is checked as usual: ${message}`);
+    return false;
+  }
+}
 function readEnforce() {
   return getInput("enforce") === "" || getBooleanInput("enforce");
 }
@@ -24722,6 +24784,10 @@ async function run() {
       info(`Linked to Linear issue ${result.key} via the PR ${result.source}.`);
       return;
     case "unlinked": {
+      if (await pullRequestChangesNoFiles(payload)) {
+        notice("Linear link check skipped: the PR changes no files.");
+        return;
+      }
       await writeFailureSummary(config);
       const message = "This PR is not linked to a Linear issue. See the job summary for how to link it.";
       if (enforce) {
