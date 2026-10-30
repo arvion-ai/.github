@@ -17,6 +17,8 @@ export interface CheckConfig {
   targetBranches: string[];
   /** Label that exempts a PR. Empty disables the label exemption. */
   skipLabel: string;
+  /** Whether a PR opened by a bot passes without a key. */
+  exemptBots: boolean;
 }
 
 /** Raw action inputs, as strings. An empty string means "use the default". */
@@ -24,6 +26,7 @@ export interface RawInputs {
   teamKeys: string;
   targetBranches: string;
   skipLabel: string;
+  exemptBots: string;
 }
 
 export type LinkSource = 'branch' | 'title' | 'body';
@@ -37,6 +40,7 @@ export type CheckResult =
 // workflow leave the inputs empty so these apply.
 export const DEFAULT_TEAM_KEYS = ['ARV', 'OSS', 'KIN'];
 export const DEFAULT_TARGET_BRANCHES = ['main', 'production'];
+export const DEFAULT_EXEMPT_BOTS = false;
 /** Input value that disables a list filter: any team key, or every base branch. */
 export const ANY = '*';
 
@@ -85,11 +89,21 @@ function resolveList(value: string, defaults: string[]): string[] {
   return list;
 }
 
+/** Applies the default to an empty boolean input; anything but true or false is an error. */
+function resolveBoolean(name: string, value: string, defaultValue: boolean): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === '') return defaultValue;
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  throw new Error(`The ${name} input must be true or false, not "${value}".`);
+}
+
 export function resolveConfig(inputs: RawInputs): CheckConfig {
   return {
     teamKeys: resolveList(inputs.teamKeys, DEFAULT_TEAM_KEYS).map((key) => key.toUpperCase()),
     targetBranches: resolveList(inputs.targetBranches, DEFAULT_TARGET_BRANCHES),
     skipLabel: inputs.skipLabel.trim(),
+    exemptBots: resolveBoolean('exempt-bots', inputs.exemptBots, DEFAULT_EXEMPT_BOTS),
   };
 }
 
@@ -166,7 +180,7 @@ function isBot(author: string): boolean {
 }
 
 export function checkPullRequest(pr: PullRequestInfo, config: CheckConfig): CheckResult {
-  if (isBot(pr.author)) {
+  if (config.exemptBots && isBot(pr.author)) {
     return { status: 'exempt', reason: `author ${pr.author} is a bot` };
   }
   const skipLabel = config.skipLabel.trim().toLowerCase();

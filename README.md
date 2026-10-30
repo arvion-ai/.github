@@ -27,8 +27,8 @@ Keys must not touch a letter or digit: `XARV-123` and `ARV-123x` do not count as
 
 These PRs pass with a notice instead of being checked:
 
-- PRs opened by a bot, i.e. any author whose login ends in `[bot]` (Dependabot, Renovate, GitHub Actions, and so on).
-- PRs with the `skip-label` label, if one is set. None is set by default: a label can be added by anyone with triage access, with no reason and no record. For a PR that really has no ticket, an org admin merges it through the ruleset bypass list.
+- PRs opened by a bot, i.e. any author whose login ends in `[bot]` (Dependabot, Renovate, GitHub Actions, and so on), but only where `exempt-bots` is `true`. By default a bot PR needs a key like any other.
+- PRs with the `skip-label` label, if one is set. None is set by default: a label can be added by anyone with triage access, with no reason and no record. A PR that has no ticket yet gets one.
 - PRs whose base branch is not in `target-branches`. By default the check runs on PRs into `main` and `production`, so release PRs need a Linear key too.
 
 When a PR fails, the job summary explains the three ways to link it. The check reads the PR from the event payload. It needs no token and never comments on the PR. It re-runs when the PR is edited, labeled, unlabeled, or pushed to, so fixing the title, description, or label is enough.
@@ -40,6 +40,7 @@ An empty input uses the default. The defaults are defined once, in [`src/match.t
 | `team-keys`       | `ARV,OSS,KIN`        | Comma-separated Linear team keys. `*` accepts any key matching `[A-Z][A-Z0-9]+-<number>`.  |
 | `target-branches` | `main,production`    | Comma-separated base branches to enforce on. `*` enforces on all branches.                 |
 | `skip-label`      | none                 | Label that exempts a PR. Empty disables the exemption.                                     |
+| `exempt-bots`     | `false`              | When `true`, a PR opened by a bot passes without a key.                                    |
 | `enforce`         | `true`               | When `false`, an unlinked PR gets a warning and the check still passes.                    |
 
 The pieces:

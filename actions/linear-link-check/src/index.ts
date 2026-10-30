@@ -40,6 +40,7 @@ function readConfig(): CheckConfig {
     teamKeys: core.getInput('team-keys'),
     targetBranches: core.getInput('target-branches'),
     skipLabel: core.getInput('skip-label'),
+    exemptBots: core.getInput('exempt-bots'),
   });
 }
 
@@ -57,7 +58,7 @@ async function writeFailureSummary(config: CheckConfig): Promise<void> {
       : 'Any Linear issue key, for example <code>ABC-123</code>, is accepted.';
   const escapeHatch = skipLabel
     ? ` If this change really has no ticket, add the <code>${skipLabel}</code> label.`
-    : ' If this change really has no ticket, ask an org admin to merge it through the ruleset bypass list.';
+    : ' If this change has no ticket yet, open one and link it.';
   const paragraph = (html: string): string => `<p>${html}</p>`;
 
   await core.summary
